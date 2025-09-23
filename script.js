@@ -375,4 +375,5 @@ function saveVoterData() {
   localStorage.setItem(LS_CURRENT_VOTER, JSON.stringify(voter));
   voterCurrent.textContent = `Aprendiz: ${voterId} · Ficha: ${ficha}`;
   alert("Datos del aprendiz guardados.");
+  
 }
