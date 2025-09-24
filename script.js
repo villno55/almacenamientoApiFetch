@@ -6,7 +6,6 @@ const LS_VOTES = 'elecciones_votos';
 const LS_CACHED_CAND = 'elecciones_cache_cands';
 const LS_CURRENT_VOTER = 'elecciones_voter';
 
-// Definición única de Voto en Blanco
 const BLANCO = {
   id: "blanco",
   nombre: "Voto en Blanco",
@@ -175,7 +174,6 @@ function renderCandidates() {
     return;
   }
 
-  // Detectar si ya hay un "Blanco" en el JSON para no añadirlo dos veces
   const hasBlanco = candidates.some(c => c.nombre.toLowerCase().includes('blanco'));
 
   const allCandidates = hasBlanco ? candidates : [...candidates, BLANCO];
