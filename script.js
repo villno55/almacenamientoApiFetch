@@ -1,207 +1,397 @@
-const API_CANDIDATOS = "https://raw.githubusercontent.com/CesarMCuellarCha/apis/refs/heads/main/candidatos.json";
-const API_ADMIN = "https://raw.githubusercontent.com/cesarmcuellar/Elecciones/refs/heads/main/administrador.json";
+const CANDIDATES_URL = 'https://raw.githubusercontent.com/CesarMCuellarCha/apis/refs/heads/main/candidatos.json';
+const ADMIN_URL = 'https://raw.githubusercontent.com/cesarmcuellar/Elecciones/refs/heads/main/administrador.json';
 
-const adminUser = document.getElementById("adminUser");
-const adminPass = document.getElementById("adminPass");
-const btnLogin = document.getElementById("btnLogin");
-const btnInicio = document.getElementById("btnInicio");
-const btnCierre = document.getElementById("btnCierre");
-const estadoSpan = document.getElementById("estado");
+const LS_ELECTION = 'elecciones_estado';
+const LS_VOTES = 'elecciones_votos';
+const LS_CACHED_CAND = 'elecciones_cache_cands';
+const LS_CURRENT_VOTER = 'elecciones_voter';
 
-const votacionSection = document.getElementById("votacion");
-const candidatosDiv = document.getElementById("candidatos");
-const resultadosSection = document.getElementById("resultados");
-const tablaResultados = document.getElementById("tablaResultados");
-const btnReiniciar = document.getElementById("btnReiniciar");
+const BLANCO = {
+  id: "blanco",
+  nombre: "Voto en Blanco",
+  programa: "",
+  foto: "https://via.placeholder.com/300?text=Blanco",
+  documento: "",
+  ficha: ""
+};
 
-let eleccionesActivas = false;
-let candidatos = [];
-let votos = JSON.parse(localStorage.getItem("votos_elecciones") || "{}");
+const electionStatusEl = document.getElementById('election-status');
+const adminAreaBtn = document.getElementById('admin-area-btn');
+const refreshBtn = document.getElementById('refresh-btn');
+const adminSection = document.getElementById('admin-section');
+const adminLoginBtn = document.getElementById('admin-login-btn');
+const adminLogoutBtn = document.getElementById('admin-logout-btn');
+const adminUserInput = document.getElementById('admin-user');
+const adminPassInput = document.getElementById('admin-pass');
+const adminControls = document.getElementById('admin-controls');
+const adminNameSpan = document.getElementById('admin-name');
+const startBtn = document.getElementById('start-elections-btn');
+const closeBtn = document.getElementById('close-elections-btn');
+const viewResultsAdminBtn = document.getElementById('view-results-admin-btn');
+const adminMessage = document.getElementById('admin-message');
 
-const PLACEHOLDER = "https://via.placeholder.com/400x300?text=Sin+Imagen";
+const votingSection = document.getElementById('voting-section');
+const candidatesContainer = document.getElementById('candidates-container');
 
+const resultsSection = document.getElementById('results-section');
+const resultsList = document.getElementById('results-list');
+const backToVoteBtn = document.getElementById('back-to-vote-btn');
 
-async function fetchAdmin() {
-  try {
-    const r = await fetch(API_ADMIN);
-    if (!r.ok) throw new Error("Error al obtener admin");
-    return await r.json();
-  } catch (err) {
-    console.error("Error en fetchAdmin:", err);
-    alert("No se pudo obtener datos de administrador. Revisa la consola.");
-    return null;
+const confirmModal = document.getElementById('confirm-modal');
+const confirmText = document.getElementById('confirm-text');
+const confirmYes = document.getElementById('confirm-yes-btn');
+const confirmNo = document.getElementById('confirm-no-btn');
+
+const setVoterBtn = document.getElementById('set-voter-btn');
+const voterIdInput = document.getElementById('voter-id');
+const voterCodeInput = document.getElementById('voter-code');
+const voterCurrent = document.getElementById('voter-current');
+
+let candidates = [];
+let adminData = null;
+let selectedCandidateForVote = null;
+
+init();
+
+async function init() {
+  bindEvents();
+  loadLocalCache();
+  await loadCandidates();
+  await loadAdminData();
+  renderByState();
+}
+
+function bindEvents() {
+  adminAreaBtn.addEventListener('click', toggleAdminSection);
+  adminLoginBtn.addEventListener('click', onAdminLogin);
+  adminLogoutBtn.addEventListener('click', onAdminLogout);
+  startBtn.addEventListener('click', onStartElections);
+  closeBtn.addEventListener('click', onCloseElections);
+  viewResultsAdminBtn.addEventListener('click', showResults);
+  refreshBtn.addEventListener('click', async () => {
+    await loadCandidates(true);
+    renderByState();
+  });
+
+  setVoterBtn.addEventListener('click', saveVoterData);
+  backToVoteBtn.addEventListener('click', () => showView('voting'));
+  confirmNo.addEventListener('click', hideModal);
+  confirmYes.addEventListener('click', confirmVote);
+  confirmModal.addEventListener('click', (e) => {
+    if (e.target === confirmModal) hideModal();
+  });
+}
+
+function loadLocalCache() {
+  if (!localStorage.getItem(LS_ELECTION)) {
+    localStorage.setItem(LS_ELECTION, JSON.stringify({ started: false, startedAt: null, closedAt: null }));
+  }
+  if (!localStorage.getItem(LS_VOTES)) {
+    localStorage.setItem(LS_VOTES, JSON.stringify([]));
+  }
+
+  const v = localStorage.getItem(LS_CURRENT_VOTER);
+  if (v) {
+    try {
+      const o = JSON.parse(v);
+      voterCurrent.textContent = `Aprendiz: ${o.voterId} · Ficha: ${o.ficha}`;
+      voterIdInput.value = o.voterId;
+      voterCodeInput.value = o.ficha;
+    } catch (e) {
+      console.warn('LS_CURRENT_VOTER malformed, clearing it.');
+      localStorage.removeItem(LS_CURRENT_VOTER);
+    }
   }
 }
 
-async function fetchCandidatos() {
+async function loadCandidates(force = false) {
   try {
-    console.log(" Intentando conectar a:", API_CANDIDATOS);
-    const r = await fetch(API_CANDIDATOS);
-    console.log("Estado HTTP:", r.status, r.statusText);
-
-    if (!r.ok) throw new Error("Error al obtener candidatos");
-
-    const data = await r.json();
-    console.log("JSON recibido:", data);
-
-   
-    const candidatosConFotos = data.map(c => {
-      const nombre = (c.nombre || "").toLowerCase();
-
-      if (nombre.includes("juan")) {
-        c.foto = "imágenes/juan.jpg";
-      } else if (nombre.includes("monik") || nombre.includes("monica")) {
-        c.foto = "imágenes/Monik.jpg";
-      } else if (nombre.includes("carlos")) {
-        c.foto = "imágenes/carlos.jpg";
-      } else if (nombre.includes("Blanco")) {
-        c.foto = "imágenes/Voto-en-blanco.jpg";
-      } else {
-        c.foto = PLACEHOLDER;
+    if (!force) {
+      const cache = localStorage.getItem(LS_CACHED_CAND);
+      if (cache) {
+        candidates = JSON.parse(cache);
+        renderCandidates();
       }
+    }
 
-      return c;
+    const res = await fetch(CANDIDATES_URL);
+    if (!res.ok) throw new Error('Error al obtener candidatos');
+    let data = await res.json();
+
+    candidates = data.map((c, i) => {
+      // normaliza propiedades básicas
+      const base = { ...c };
+      let id = base.id || `cand-${i}`;
+      if (id === 'blanco') {
+   
+        id = `cand-${i}`;
+        console.warn(`El candidato original tenía id "blanco". Se renombró a "${id}" para evitar conflicto con el voto en blanco.`);
+      }
+      return { ...base, id };
     });
 
-    console.log(" Candidatos finales:", candidatosConFotos);
-    return candidatosConFotos;
+    localStorage.setItem(LS_CACHED_CAND, JSON.stringify(candidates));
+    renderCandidates();
   } catch (err) {
-    console.error("Error en fetchCandidatos:", err);
-    alert("No se pudieron cargar los candidatos. Revisa la consola.");
-    return [];
-  }
-}
-
-function nombreCompleto(c) {
-  return `${c.nombre || ""} ${c.apellido || ""}`.trim();
-}
-
-function guardarVotos() {
-  localStorage.setItem("votos_elecciones", JSON.stringify(votos));
-}
-
-function inicializarVotos() {
-  candidatos.forEach(c => {
-    const key = nombreCompleto(c);
-    if (!(key in votos)) votos[key] = 0;
-  });
-  guardarVotos();
-}
-
-function renderCandidatos() {
-  candidatosDiv.innerHTML = "";
-  if (!candidatos.length) {
-    candidatosDiv.innerHTML = "<p>No hay candidatos para mostrar.</p>";
-    return;
-  }
-
-  
-candidatos.forEach(c => {
-  let key = nombreCompleto(c);
-  let foto = c.foto || PLACEHOLDER;
-  let ficha = c.ficha ?? "-";
-  let curso = c.curso ?? "-";
-
-    if (key.toLowerCase().includes("blanco")) {
-    key = "Voto en Blanco";
-    foto = "imágenes/Voto-en-blanco.jpg";
-    
-  }
-    const card = document.createElement("div");
-    card.className = "candidato";
-    card.innerHTML = `
-      <img src="${foto}" alt="${key}" loading="lazy">
-      <h3>${key}</h3>
-      <p><strong>Programa:</strong> ${curso}</p>
-      <p><strong>Ficha:</strong> ${ficha}</p>
-      <p><small>Votos actuales: <span class="vcount">${votos[key] ?? 0}</span></small></p>
-    `;
-    card.addEventListener("click", () => votarPor(key));
-    candidatosDiv.appendChild(card);
-  });
-}
-
-function votarPor(key) {
-  if (!eleccionesActivas) {
-    alert("Las elecciones no están activas.");
-    return;
-  }
-  const confirmar = confirm(`¿Está seguro que desea votar por ${key}?`);
-  if (!confirmar) return;
-
-  votos[key] = (votos[key] || 0) + 1;
-  guardarVotos();
-
-  const spans = candidatosDiv.querySelectorAll(".candidato");
-  spans.forEach(card => {
-    const title = card.querySelector("h3").textContent.trim();
-    if (title === key) {
-      const vspan = card.querySelector(".vcount");
-      if (vspan) vspan.textContent = votos[key];
+    console.error('Candidatos fetch error', err);
+    if (!candidates || candidates.length === 0) {
+      candidatesContainer.innerHTML = `<p class="muted">No se han podido cargar los candidatos. Revisa la conexión.</p>`;
     }
-  });
-
-  alert("Voto registrado. ¡Gracias!");
+  }
 }
 
-function mostrarResultados() {
-  votacionSection.classList.add("hidden");
-  resultadosSection.classList.remove("hidden");
-  tablaResultados.innerHTML = "";
-
-  const arr = Object.entries(votos).sort((a, b) => b[1] - a[1]);
-  arr.forEach(([nombre, n]) => {
-    tablaResultados.innerHTML += `<p><strong>${nombre}:</strong> ${n} votos</p>`;
-  });
+async function loadAdminData() {
+  try {
+    const res = await fetch(ADMIN_URL);
+    if (!res.ok) throw new Error('Error admin');
+    adminData = await res.json();
+  } catch (err) {
+    console.error('Admin fetch error', err);
+    adminData = null;
+  }
 }
 
-function actualizarEstado() {
-  estadoSpan.textContent = `Estado: ${eleccionesActivas ? "Activas" : "Inactivas"}`;
-}
-
-
-btnLogin.addEventListener("click", async () => {
-  const admin = await fetchAdmin();
-  if (!admin) return;
-  if (adminUser.value === admin.username && adminPass.value === admin.password) {
-    alert("Acceso concedido como administrador");
-    btnInicio.disabled = false;
-    btnCierre.disabled = false;
+function renderByState() {
+  const st = JSON.parse(localStorage.getItem(LS_ELECTION) || '{"started":false}');
+  if (st.started) {
+    if (st.closedAt) {
+      electionStatusEl.textContent = 'Estado: Cerradas';
+      electionStatusEl.style.color = '#ddd';
+    } else {
+      electionStatusEl.textContent = 'Estado: Abiertas';
+      electionStatusEl.style.color = '#000';
+    }
   } else {
-    alert("Usuario o contraseña incorrectos");
+    electionStatusEl.textContent = 'Estado: No iniciadas';
+    electionStatusEl.style.color = '#bbb';
   }
-});
 
-btnInicio.addEventListener("click", async () => {
-  candidatos = await fetchCandidatos();
-  eleccionesActivas = true;
-  inicializarVotos();
-  renderCandidatos();
-  votacionSection.classList.remove("hidden");
-  resultadosSection.classList.add("hidden");
-  actualizarEstado();
-});
+  if (st.closedAt) showView('results');
+  else showView('voting');
 
-btnCierre.addEventListener("click", () => {
-  eleccionesActivas = false;
-  guardarVotos();
-  mostrarResultados();
-  actualizarEstado();
-});
+  renderCandidates();
+}
 
-btnReiniciar.addEventListener("click", () => {
-  if (!confirm("¿Desea reiniciar (borrar todos los votos)?")) return;
-  votos = {};
-  localStorage.removeItem("votos_elecciones");
-  tablaResultados.innerHTML = "<p>Reiniciado.</p>";
-  if (eleccionesActivas && candidatos.length) {
-    inicializarVotos();
-    renderCandidatos();
+function showView(view) {
+  adminSection.classList.add('hidden');
+  votingSection.classList.add('hidden');
+  resultsSection.classList.add('hidden');
+
+  if (view === 'admin') adminSection.classList.remove('hidden');
+  if (view === 'voting') votingSection.classList.remove('hidden');
+  if (view === 'results') resultsSection.classList.remove('hidden');
+}
+
+function toggleAdminSection() {
+  if (adminSection.classList.contains('hidden')) {
+    showView('admin');
+  } else {
+    showView('voting');
   }
-});
+}
 
-document.addEventListener("DOMContentLoaded", () => {
-  actualizarEstado();
-});
-main.js
-Displaying main.js.
+function renderCandidates() {
+  const st = JSON.parse(localStorage.getItem(LS_ELECTION) || '{"started":false}');
+  const votes = JSON.parse(localStorage.getItem(LS_VOTES) || '[]');
+  candidatesContainer.innerHTML = '';
+
+  if (!Array.isArray(candidates) || candidates.length === 0) {
+    candidatesContainer.innerHTML = `<p class="muted">No hay candidatos disponibles.</p>`;
+    return;
+  }
+
+  const allCandidates = [...candidates, BLANCO];
+
+  allCandidates.forEach(c => {
+    const voteCount = votes.filter(v => v.candidateId === c.id).length;
+    const card = document.createElement('div');
+    card.className = 'candidate-card';
+    card.innerHTML = `
+      <img class="candidate-photo" src="${c.foto || ''}" alt="${escapeHtml(c.nombre)}" data-id="${c.id}">
+      <div class="candidate-name">${escapeHtml(c.nombre)}</div>
+      <div class="candidate-program">${escapeHtml(c.programa || '')}</div>
+      <div class="candidate-meta">${c.id !== "blanco" ? `Aprendiz: ${escapeHtml(c.documento || '')} · Ficha: ${escapeHtml(c.ficha || '')}` : ''}</div>
+      <div class="muted">Votos: <strong>${voteCount}</strong></div>
+    `;
+
+    const img = card.querySelector('.candidate-photo');
+
+    // Sólo hacer clic si las elecciones están abiertas y no cerradas
+    if (st.started && !st.closedAt) {
+      img.style.cursor = 'pointer';
+      img.addEventListener('click', () => onCandidateClick(c));
+    } else {
+      img.style.cursor = 'default';
+      // aseguramos que no queden listeners previos (si los hubo)
+      img.replaceWith(img.cloneNode(true));
+    }
+
+    candidatesContainer.appendChild(card);
+  });
+}
+
+function showResults() {
+  const votes = JSON.parse(localStorage.getItem(LS_VOTES) || '[]');
+  const totals = {};
+
+  // Inicializa totales para cada candidato y blanco
+  candidates.forEach(c => totals[c.id] = 0);
+  totals[BLANCO.id] = 0;
+
+  votes.forEach(v => {
+    if (totals[v.candidateId] !== undefined) totals[v.candidateId]++;
+  });
+
+  resultsList.innerHTML = '';
+  const sorted = [...candidates, BLANCO].sort((a, b) => (totals[b.id] || 0) - (totals[a.id] || 0));
+
+  sorted.forEach(c => {
+    const row = document.createElement('div');
+    row.className = 'result-row';
+    row.innerHTML = `
+      <div style="display:flex;gap:12px;align-items:center">
+        <img src="${c.foto || ''}" alt="" style="width:56px;height:56px;object-fit:cover">
+        <div>
+          <div style="font-weight:600">${escapeHtml(c.nombre)}</div>
+          <div class="muted">${escapeHtml(c.programa || '')}</div>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:20px;font-weight:700">${totals[c.id] || 0}</div>
+        <div class="muted">votos</div>
+      </div>
+    `;
+    resultsList.appendChild(row);
+  });
+
+  showView('results');
+}
+
+async function onAdminLogin() {
+  if (!adminData) {
+    adminMessage.style.color = 'red';
+    adminMessage.textContent = 'No se pudo cargar la información de administrador.';
+    return;
+  }
+  const u = adminUserInput.value.trim();
+  const p = adminPassInput.value.trim();
+  const expectedUser = adminData.user || adminData.usuario || adminData.username || '';
+  const expectedPass = adminData.pass || adminData.password || adminData.clave || '';
+
+  if (u === expectedUser && p === expectedPass) {
+    adminMessage.style.color = 'green';
+    adminMessage.textContent = 'Acceso concedido.';
+    adminControls.classList.remove('hidden');
+    adminLogoutBtn.classList.remove('hidden');
+    adminLoginBtn.classList.add('hidden');
+    adminNameSpan.textContent = adminData.name || adminData.nombre || expectedUser;
+    showView('admin');
+  } else {
+    adminMessage.style.color = 'red';
+    adminMessage.textContent = 'Credenciales incorrectas.';
+  }
+}
+
+function onAdminLogout() {
+  adminControls.classList.add('hidden');
+  adminLogoutBtn.classList.add('hidden');
+  adminLoginBtn.classList.remove('hidden');
+  adminMessage.textContent = '';
+  adminUserInput.value = '';
+  adminPassInput.value = '';
+  showView('voting');
+}
+
+function onStartElections() {
+  const st = JSON.parse(localStorage.getItem(LS_ELECTION) || '{"started":false}');
+  if (st.started && !st.closedAt) {
+    adminMessage.style.color = 'orange';
+    adminMessage.textContent = 'Las elecciones ya están en curso.';
+    return;
+  }
+  st.started = true;
+  st.startedAt = new Date().toISOString();
+  st.closedAt = null;
+  localStorage.setItem(LS_ELECTION, JSON.stringify(st));
+  adminMessage.style.color = 'green';
+  adminMessage.textContent = 'Elecciones iniciadas.';
+  renderByState();
+}
+
+function onCloseElections() {
+  const st = JSON.parse(localStorage.getItem(LS_ELECTION) || '{"started":false}');
+  if (!st.started || st.closedAt) {
+    adminMessage.style.color = 'orange';
+    adminMessage.textContent = 'No hay elecciones abiertas para cerrar.';
+    return;
+  }
+  st.closedAt = new Date().toISOString();
+  localStorage.setItem(LS_ELECTION, JSON.stringify(st));
+  adminMessage.style.color = 'green';
+  adminMessage.textContent = 'Elecciones cerradas.';
+  showResults();
+}
+
+function onCandidateClick(candidate) {
+  const st = JSON.parse(localStorage.getItem(LS_ELECTION) || '{"started":false}');
+  if (!st.started || st.closedAt) {
+    alert('Las elecciones no están activas.');
+    return;
+  }
+  const voter = JSON.parse(localStorage.getItem(LS_CURRENT_VOTER) || 'null');
+  if (!voter || !voter.voterId || !voter.ficha) {
+    alert('Por favor, ingrese los datos del aprendiz.');
+    return;
+  }
+  selectedCandidateForVote = candidate;
+  confirmText.textContent = `Vas a votar por "${candidate.nombre}". Aprendiz: ${voter.voterId} · Ficha: ${voter.ficha}`;
+  showModal();
+}
+
+function confirmVote() {
+  const voter = JSON.parse(localStorage.getItem(LS_CURRENT_VOTER) || 'null');
+  if (!voter || !selectedCandidateForVote) {
+    alert("No se pudo registrar el voto. Verifique sus datos.");
+    return;
+  }
+
+  const votes = JSON.parse(localStorage.getItem(LS_VOTES) || '[]');
+  votes.push({
+    candidateId: selectedCandidateForVote.id,
+    voterId: voter.voterId,
+    ficha: voter.ficha,
+    timestamp: new Date().toISOString()
+  });
+  localStorage.setItem(LS_VOTES, JSON.stringify(votes));
+  selectedCandidateForVote = null;
+  hideModal();
+  renderCandidates();
+  alert("Voto registrado correctamente.");
+}
+
+function showModal() {
+  confirmModal.classList.remove('hidden');
+}
+
+function hideModal() {
+  confirmModal.classList.add('hidden');
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text || '';
+  return div.innerHTML;
+}
+
+function saveVoterData() {
+  const voterId = voterIdInput.value.trim();
+  const ficha = voterCodeInput.value.trim();
+  if (!voterId || !ficha) {
+    alert("Debe ingresar documento y ficha válidos.");
+    return;
+  }
+  const voter = { voterId, ficha };
+  localStorage.setItem(LS_CURRENT_VOTER, JSON.stringify(voter));
+  voterCurrent.textContent = `Aprendiz: ${voterId} · Ficha: ${ficha}`;
+  alert("Datos del aprendiz guardados.");
+}
