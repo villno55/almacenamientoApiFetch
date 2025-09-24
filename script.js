@@ -6,15 +6,6 @@ const LS_VOTES = 'elecciones_votos';
 const LS_CACHED_CAND = 'elecciones_cache_cands';
 const LS_CURRENT_VOTER = 'elecciones_voter';
 
-const BLANCO = {
-  id: "blanco",
-  nombre: "Voto en Blanco",
-  programa: "",
-  foto: "https://www.google.com/imgres?q=teo%20gutierrez%20cali&imgurl=https%3A%2F%2Fimage-service.onefootball.com%2Ftransform%3Fw%3D280%26h%3D210%26dpr%3D2%26image%3Dhttps%253A%252F%252Ffutbolete.com%252Fwp-content%252Fuploads%252F2021%252F12%252Fteo-gutierrez-deportivo-cali-renovacion-2022.jpg&imgrefurl=https%3A%2F%2Fonefootball.com%2Fen%2Fnews%2Fteo-gutierrez-esta-libre-hay-algo-con-deportivo-cali-37540169&docid=yCqE-oXpM0D7eM&tbnid=l3f2NDwvcjEuXM&vet=12ahUKEwiCrt6HzfGPAxX0QzABHTPWCHsQM3oECBsQAA..i&w=560&h=420&hcb=2&itg=1&ved=2ahUKEwiCrt6HzfGPAxX0QzABHTPWCHsQM3oECBsQAA",
-  documento: "",
-  ficha: ""
-};
-
 const electionStatusEl = document.getElementById('election-status');
 const adminAreaBtn = document.getElementById('admin-area-btn');
 const refreshBtn = document.getElementById('refresh-btn');
@@ -72,10 +63,13 @@ function bindEvents() {
     await loadCandidates(true);
     renderByState();
   });
+
   setVoterBtn.addEventListener('click', saveVoterData);
   backToVoteBtn.addEventListener('click', () => showView('voting'));
+
   confirmNo.addEventListener('click', hideModal);
   confirmYes.addEventListener('click', confirmVote);
+
   confirmModal.addEventListener('click', (e) => {
     if (e.target === confirmModal) hideModal();
   });
@@ -88,6 +82,7 @@ function loadLocalCache() {
   if (!localStorage.getItem(LS_VOTES)) {
     localStorage.setItem(LS_VOTES, JSON.stringify([]));
   }
+
   const v = localStorage.getItem(LS_CURRENT_VOTER);
   if (v) {
     const o = JSON.parse(v);
@@ -106,10 +101,15 @@ async function loadCandidates(force = false) {
         renderCandidates();
       }
     }
+
     const res = await fetch(CANDIDATES_URL);
     if (!res.ok) throw new Error('Error al obtener candidatos');
     let data = await res.json();
-    candidates = data.map((c, i) => ({ ...c, id: c.id || `cand-${i}` }));
+
+    candidates = data
+      .filter(c => c.id !== 'blanco' && c.nombre.toLowerCase() !== 'voto en blanco')
+      .map((c, i) => ({ ...c, id: c.id || `cand-${i}` }));
+
     localStorage.setItem(LS_CACHED_CAND, JSON.stringify(candidates));
     renderCandidates();
   } catch (err) {
@@ -134,15 +134,7 @@ async function loadAdminData() {
 function renderByState() {
   const st = JSON.parse(localStorage.getItem(LS_ELECTION));
   electionStatusEl.textContent = st.started ? (st.closedAt ? 'Estado: Cerradas' : 'Estado: Abiertas') : 'Estado: No iniciadas';
-
-  if (st.started && !st.closedAt) {
-    electionStatusEl.style.color = '#fff';
-  } else if (st.closedAt) {
-    electionStatusEl.style.color = '#ddd';
-  } else {
-    electionStatusEl.style.color = '#bbb';
-  }
-
+  electionStatusEl.style.color = st.closedAt ? '#ddd' : (st.started ? '#fff' : '#bbb');
   showView(st.closedAt ? 'results' : 'voting');
   renderCandidates();
 }
@@ -151,6 +143,7 @@ function showView(view) {
   adminSection.classList.add('hidden');
   votingSection.classList.add('hidden');
   resultsSection.classList.add('hidden');
+
   if (view === 'admin') adminSection.classList.remove('hidden');
   if (view === 'voting') votingSection.classList.remove('hidden');
   if (view === 'results') resultsSection.classList.remove('hidden');
@@ -174,11 +167,7 @@ function renderCandidates() {
     return;
   }
 
-  const hasBlanco = candidates.some(c => c.nombre.toLowerCase().includes('blanco'));
-
-  const allCandidates = hasBlanco ? candidates : [...candidates, BLANCO];
-
-  allCandidates.forEach(c => {
+  candidates.forEach(c => {
     const voteCount = votes.filter(v => v.candidateId === c.id).length;
     const card = document.createElement('div');
     card.className = 'candidate-card';
@@ -186,8 +175,7 @@ function renderCandidates() {
       <img class="candidate-photo" src="${c.foto}" alt="${escapeHtml(c.nombre)}" data-id="${c.id}">
       <div class="candidate-name">${escapeHtml(c.nombre)}</div>
       <div class="candidate-program">${escapeHtml(c.programa || '')}</div>
-      <div class="candidate-meta">${c.id !== "blanco" ?
-        `Aprendiz: ${escapeHtml(c.documento || '')} · Ficha: ${escapeHtml(c.ficha || '')}` : ''}</div>
+      <div class="candidate-meta">Aprendiz: ${escapeHtml(c.documento || '')} · Ficha: ${escapeHtml(c.ficha || '')}</div>
       <div class="muted">Votos: <strong>${voteCount}</strong></div>
     `;
     const img = card.querySelector('.candidate-photo');
@@ -204,12 +192,12 @@ function showResults() {
   const votes = JSON.parse(localStorage.getItem(LS_VOTES));
   const totals = {};
   candidates.forEach(c => totals[c.id] = 0);
-  totals["blanco"] = 0;
-
-  votes.forEach(v => { if (totals[v.candidateId] !== undefined) totals[v.candidateId]++; });
+  votes.forEach(v => {
+    if (totals[v.candidateId] !== undefined) totals[v.candidateId]++;
+  });
 
   resultsList.innerHTML = '';
-  const sorted = [...candidates, BLANCO].sort((a, b) => (totals[b.id] || 0) - (totals[a.id] || 0));
+  const sorted = [...candidates].sort((a, b) => (totals[b.id] || 0) - (totals[a.id] || 0));
 
   sorted.forEach(c => {
     const row = document.createElement('div');
@@ -238,12 +226,9 @@ async function onAdminLogin() {
     adminMessage.textContent = 'No se pudo cargar la información de administrador.';
     return;
   }
+
   const u = adminUserInput.value.trim();
   const p = adminPassInput.value.trim();
-  if (u === '' || p === '') {
-    adminMessage.textContent = 'Ingrese usuario y contraseña.';
-    return;
-  }
 
   const expectedUser = adminData.user || adminData.usuario || adminData.username || '';
   const expectedPass = adminData.pass || adminData.password || adminData.clave || '';
@@ -312,7 +297,7 @@ function onCandidateClick(candidate) {
     return;
   }
   selectedCandidateForVote = candidate;
-  confirmText.textContent = `Vas a votar por "${candidate.nombre}". Aprendiz: ${voter.voterId} · Ficha: ${voter.ficha}`;
+  confirmText.textContent = `Vas a votar por "${candidate.nombre}". Aprendiz: ${voter.voterId} · Ficha: ${voter.ficha}`;
   showModal();
 }
 
