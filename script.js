@@ -10,7 +10,7 @@ const BLANCO = {
   id: "blanco",
   nombre: "Voto en Blanco",
   programa: "",
-  foto: "https://via.placeholder.com/300?text=Blanco",
+  foto: "https://www.google.com/imgres?q=teo%20gutierrez%20cali&imgurl=https%3A%2F%2Fimage-service.onefootball.com%2Ftransform%3Fw%3D280%26h%3D210%26dpr%3D2%26image%3Dhttps%253A%252F%252Ffutbolete.com%252Fwp-content%252Fuploads%252F2021%252F12%252Fteo-gutierrez-deportivo-cali-renovacion-2022.jpg&imgrefurl=https%3A%2F%2Fonefootball.com%2Fen%2Fnews%2Fteo-gutierrez-esta-libre-hay-algo-con-deportivo-cali-37540169&docid=yCqE-oXpM0D7eM&tbnid=l3f2NDwvcjEuXM&vet=12ahUKEwiCrt6HzfGPAxX0QzABHTPWCHsQM3oECBsQAA..i&w=560&h=420&hcb=2&itg=1&ved=2ahUKEwiCrt6HzfGPAxX0QzABHTPWCHsQM3oECBsQAA",
   documento: "",
   ficha: ""
 };
@@ -72,7 +72,6 @@ function bindEvents() {
     await loadCandidates(true);
     renderByState();
   });
-
   setVoterBtn.addEventListener('click', saveVoterData);
   backToVoteBtn.addEventListener('click', () => showView('voting'));
   confirmNo.addEventListener('click', hideModal);
@@ -89,18 +88,12 @@ function loadLocalCache() {
   if (!localStorage.getItem(LS_VOTES)) {
     localStorage.setItem(LS_VOTES, JSON.stringify([]));
   }
-
   const v = localStorage.getItem(LS_CURRENT_VOTER);
   if (v) {
-    try {
-      const o = JSON.parse(v);
-      voterCurrent.textContent = `Aprendiz: ${o.voterId} · Ficha: ${o.ficha}`;
-      voterIdInput.value = o.voterId;
-      voterCodeInput.value = o.ficha;
-    } catch (e) {
-      console.warn('LS_CURRENT_VOTER malformed, clearing it.');
-      localStorage.removeItem(LS_CURRENT_VOTER);
-    }
+    const o = JSON.parse(v);
+    voterCurrent.textContent = `Aprendiz: ${o.voterId} · Ficha: ${o.ficha}`;
+    voterIdInput.value = o.voterId;
+    voterCodeInput.value = o.ficha;
   }
 }
 
@@ -113,23 +106,10 @@ async function loadCandidates(force = false) {
         renderCandidates();
       }
     }
-
     const res = await fetch(CANDIDATES_URL);
     if (!res.ok) throw new Error('Error al obtener candidatos');
     let data = await res.json();
-
-    candidates = data.map((c, i) => {
-      // normaliza propiedades básicas
-      const base = { ...c };
-      let id = base.id || `cand-${i}`;
-      if (id === 'blanco') {
-   
-        id = `cand-${i}`;
-        console.warn(`El candidato original tenía id "blanco". Se renombró a "${id}" para evitar conflicto con el voto en blanco.`);
-      }
-      return { ...base, id };
-    });
-
+    candidates = data.map((c, i) => ({ ...c, id: c.id || `cand-${i}` }));
     localStorage.setItem(LS_CACHED_CAND, JSON.stringify(candidates));
     renderCandidates();
   } catch (err) {
@@ -152,23 +132,18 @@ async function loadAdminData() {
 }
 
 function renderByState() {
-  const st = JSON.parse(localStorage.getItem(LS_ELECTION) || '{"started":false}');
-  if (st.started) {
-    if (st.closedAt) {
-      electionStatusEl.textContent = 'Estado: Cerradas';
-      electionStatusEl.style.color = '#ddd';
-    } else {
-      electionStatusEl.textContent = 'Estado: Abiertas';
-      electionStatusEl.style.color = '#000';
-    }
+  const st = JSON.parse(localStorage.getItem(LS_ELECTION));
+  electionStatusEl.textContent = st.started ? (st.closedAt ? 'Estado: Cerradas' : 'Estado: Abiertas') : 'Estado: No iniciadas';
+
+  if (st.started && !st.closedAt) {
+    electionStatusEl.style.color = '#fff';
+  } else if (st.closedAt) {
+    electionStatusEl.style.color = '#ddd';
   } else {
-    electionStatusEl.textContent = 'Estado: No iniciadas';
     electionStatusEl.style.color = '#bbb';
   }
 
-  if (st.closedAt) showView('results');
-  else showView('voting');
-
+  showView(st.closedAt ? 'results' : 'voting');
   renderCandidates();
 }
 
@@ -176,7 +151,6 @@ function showView(view) {
   adminSection.classList.add('hidden');
   votingSection.classList.add('hidden');
   resultsSection.classList.add('hidden');
-
   if (view === 'admin') adminSection.classList.remove('hidden');
   if (view === 'voting') votingSection.classList.remove('hidden');
   if (view === 'results') resultsSection.classList.remove('hidden');
@@ -191,56 +165,48 @@ function toggleAdminSection() {
 }
 
 function renderCandidates() {
-  const st = JSON.parse(localStorage.getItem(LS_ELECTION) || '{"started":false}');
-  const votes = JSON.parse(localStorage.getItem(LS_VOTES) || '[]');
+  const st = JSON.parse(localStorage.getItem(LS_ELECTION));
+  const votes = JSON.parse(localStorage.getItem(LS_VOTES));
   candidatesContainer.innerHTML = '';
 
-  if (!Array.isArray(candidates) || candidates.length === 0) {
+  if (candidates.length === 0) {
     candidatesContainer.innerHTML = `<p class="muted">No hay candidatos disponibles.</p>`;
     return;
   }
 
-  const allCandidates = [...candidates, BLANCO];
+  const hasBlanco = candidates.some(c => c.nombre.toLowerCase().includes('blanco'));
+
+  const allCandidates = hasBlanco ? candidates : [...candidates, BLANCO];
 
   allCandidates.forEach(c => {
     const voteCount = votes.filter(v => v.candidateId === c.id).length;
     const card = document.createElement('div');
     card.className = 'candidate-card';
     card.innerHTML = `
-      <img class="candidate-photo" src="${c.foto || ''}" alt="${escapeHtml(c.nombre)}" data-id="${c.id}">
+      <img class="candidate-photo" src="${c.foto}" alt="${escapeHtml(c.nombre)}" data-id="${c.id}">
       <div class="candidate-name">${escapeHtml(c.nombre)}</div>
       <div class="candidate-program">${escapeHtml(c.programa || '')}</div>
-      <div class="candidate-meta">${c.id !== "blanco" ? `Aprendiz: ${escapeHtml(c.documento || '')} · Ficha: ${escapeHtml(c.ficha || '')}` : ''}</div>
+      <div class="candidate-meta">${c.id !== "blanco" ?
+        `Aprendiz: ${escapeHtml(c.documento || '')} · Ficha: ${escapeHtml(c.ficha || '')}` : ''}</div>
       <div class="muted">Votos: <strong>${voteCount}</strong></div>
     `;
-
     const img = card.querySelector('.candidate-photo');
-
-    // Sólo hacer clic si las elecciones están abiertas y no cerradas
-    if (st.started && !st.closedAt) {
-      img.style.cursor = 'pointer';
-      img.addEventListener('click', () => onCandidateClick(c));
-    } else {
-      img.style.cursor = 'default';
-      // aseguramos que no queden listeners previos (si los hubo)
-      img.replaceWith(img.cloneNode(true));
-    }
-
+    img.addEventListener('click', () => onCandidateClick(c));
     candidatesContainer.appendChild(card);
   });
+
+  if (st.closedAt) {
+    candidatesContainer.querySelectorAll('.candidate-photo').forEach(img => img.style.cursor = 'default');
+  }
 }
 
 function showResults() {
-  const votes = JSON.parse(localStorage.getItem(LS_VOTES) || '[]');
+  const votes = JSON.parse(localStorage.getItem(LS_VOTES));
   const totals = {};
-
-  // Inicializa totales para cada candidato y blanco
   candidates.forEach(c => totals[c.id] = 0);
-  totals[BLANCO.id] = 0;
+  totals["blanco"] = 0;
 
-  votes.forEach(v => {
-    if (totals[v.candidateId] !== undefined) totals[v.candidateId]++;
-  });
+  votes.forEach(v => { if (totals[v.candidateId] !== undefined) totals[v.candidateId]++; });
 
   resultsList.innerHTML = '';
   const sorted = [...candidates, BLANCO].sort((a, b) => (totals[b.id] || 0) - (totals[a.id] || 0));
@@ -250,7 +216,7 @@ function showResults() {
     row.className = 'result-row';
     row.innerHTML = `
       <div style="display:flex;gap:12px;align-items:center">
-        <img src="${c.foto || ''}" alt="" style="width:56px;height:56px;object-fit:cover">
+        <img src="${c.foto}" alt="" style="width:56px;height:56px;object-fit:cover">
         <div>
           <div style="font-weight:600">${escapeHtml(c.nombre)}</div>
           <div class="muted">${escapeHtml(c.programa || '')}</div>
@@ -269,12 +235,16 @@ function showResults() {
 
 async function onAdminLogin() {
   if (!adminData) {
-    adminMessage.style.color = 'red';
     adminMessage.textContent = 'No se pudo cargar la información de administrador.';
     return;
   }
   const u = adminUserInput.value.trim();
   const p = adminPassInput.value.trim();
+  if (u === '' || p === '') {
+    adminMessage.textContent = 'Ingrese usuario y contraseña.';
+    return;
+  }
+
   const expectedUser = adminData.user || adminData.usuario || adminData.username || '';
   const expectedPass = adminData.pass || adminData.password || adminData.clave || '';
 
@@ -285,7 +255,6 @@ async function onAdminLogin() {
     adminLogoutBtn.classList.remove('hidden');
     adminLoginBtn.classList.add('hidden');
     adminNameSpan.textContent = adminData.name || adminData.nombre || expectedUser;
-    showView('admin');
   } else {
     adminMessage.style.color = 'red';
     adminMessage.textContent = 'Credenciales incorrectas.';
@@ -299,11 +268,10 @@ function onAdminLogout() {
   adminMessage.textContent = '';
   adminUserInput.value = '';
   adminPassInput.value = '';
-  showView('voting');
 }
 
 function onStartElections() {
-  const st = JSON.parse(localStorage.getItem(LS_ELECTION) || '{"started":false}');
+  const st = JSON.parse(localStorage.getItem(LS_ELECTION));
   if (st.started && !st.closedAt) {
     adminMessage.style.color = 'orange';
     adminMessage.textContent = 'Las elecciones ya están en curso.';
@@ -319,7 +287,7 @@ function onStartElections() {
 }
 
 function onCloseElections() {
-  const st = JSON.parse(localStorage.getItem(LS_ELECTION) || '{"started":false}');
+  const st = JSON.parse(localStorage.getItem(LS_ELECTION));
   if (!st.started || st.closedAt) {
     adminMessage.style.color = 'orange';
     adminMessage.textContent = 'No hay elecciones abiertas para cerrar.';
@@ -333,35 +301,37 @@ function onCloseElections() {
 }
 
 function onCandidateClick(candidate) {
-  const st = JSON.parse(localStorage.getItem(LS_ELECTION) || '{"started":false}');
+  const st = JSON.parse(localStorage.getItem(LS_ELECTION));
   if (!st.started || st.closedAt) {
     alert('Las elecciones no están activas.');
     return;
   }
-  const voter = JSON.parse(localStorage.getItem(LS_CURRENT_VOTER) || 'null');
+  const voter = JSON.parse(localStorage.getItem(LS_CURRENT_VOTER));
   if (!voter || !voter.voterId || !voter.ficha) {
     alert('Por favor, ingrese los datos del aprendiz.');
     return;
   }
   selectedCandidateForVote = candidate;
-  confirmText.textContent = `Vas a votar por "${candidate.nombre}". Aprendiz: ${voter.voterId} · Ficha: ${voter.ficha}`;
+  confirmText.textContent = `Vas a votar por "${candidate.nombre}". Aprendiz: ${voter.voterId} · Ficha: ${voter.ficha}`;
   showModal();
 }
 
 function confirmVote() {
-  const voter = JSON.parse(localStorage.getItem(LS_CURRENT_VOTER) || 'null');
+  const voter = JSON.parse(localStorage.getItem(LS_CURRENT_VOTER));
   if (!voter || !selectedCandidateForVote) {
     alert("No se pudo registrar el voto. Verifique sus datos.");
     return;
   }
 
-  const votes = JSON.parse(localStorage.getItem(LS_VOTES) || '[]');
+  const votes = JSON.parse(localStorage.getItem(LS_VOTES)) || [];
+
   votes.push({
     candidateId: selectedCandidateForVote.id,
     voterId: voter.voterId,
     ficha: voter.ficha,
     timestamp: new Date().toISOString()
   });
+
   localStorage.setItem(LS_VOTES, JSON.stringify(votes));
   selectedCandidateForVote = null;
   hideModal();
@@ -379,7 +349,7 @@ function hideModal() {
 
 function escapeHtml(text) {
   const div = document.createElement('div');
-  div.textContent = text || '';
+  div.textContent = text;
   return div.innerHTML;
 }
 
