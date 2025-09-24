@@ -10,7 +10,7 @@ const BLANCO = {
   id: "blanco",
   nombre: "Voto en Blanco",
   programa: "",
-  foto: "https://via.placeholder.com/300?text=Blanco",
+  foto: "https://www.google.com/imgres?q=teo%20gutierrez%20cali&imgurl=https%3A%2F%2Fimage-service.onefootball.com%2Ftransform%3Fw%3D280%26h%3D210%26dpr%3D2%26image%3Dhttps%253A%252F%252Ffutbolete.com%252Fwp-content%252Fuploads%252F2021%252F12%252Fteo-gutierrez-deportivo-cali-renovacion-2022.jpg&imgrefurl=https%3A%2F%2Fonefootball.com%2Fen%2Fnews%2Fteo-gutierrez-esta-libre-hay-algo-con-deportivo-cali-37540169&docid=yCqE-oXpM0D7eM&tbnid=l3f2NDwvcjEuXM&vet=12ahUKEwiCrt6HzfGPAxX0QzABHTPWCHsQM3oECBsQAA..i&w=560&h=420&hcb=2&itg=1&ved=2ahUKEwiCrt6HzfGPAxX0QzABHTPWCHsQM3oECBsQAA",
   documento: "",
   ficha: ""
 };
